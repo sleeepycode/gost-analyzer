@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic
+pydantic-settings
+python-multipart
+python-docx
+pytest
+httpx
+kombu
+requests
+Pillow
+docx2pdf

@@ -1,0 +1,12 @@
+easyocr
+pillow
+scikit-learn
+numpy
+python-dotenv
+requests
+paddleocr
+paddlepaddle
+fastapi
+uvicorn
+pydantic
+python-multipart

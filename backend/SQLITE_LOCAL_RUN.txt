@@ -1,0 +1,26 @@
+Backend переведен на SQLite.
+
+Что изменено:
+1. app/core/config.py:
+   database_url по умолчанию = sqlite:///./app.db
+
+2. Designer_Lab-backend/.env:
+   DATABASE_URL=sqlite:///./app.db
+
+3. requirements.txt:
+   удален psycopg[binary], PostgreSQL-драйвер больше не нужен для локального запуска.
+
+4. alembic.ini:
+   sqlalchemy.url = sqlite:///./app.db
+
+Как запустить backend:
+cd D:\final_full\Designer_Lab-backend
+.\venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --host 127.0.0.1 --port 8002 --log-level info
+
+Если хочешь пересоздать базу:
+1. Останови backend.
+2. Удали файл app.db в папке Designer_Lab-backend.
+3. Запусти backend снова.
+Таблицы создадутся автоматически через SQLAlchemy create_all().

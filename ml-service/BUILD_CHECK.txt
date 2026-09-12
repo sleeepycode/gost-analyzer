@@ -1,0 +1,10 @@
+Syntax check for ml package: OK
+
+Что исправлено:
+- Добавлена жёсткая русскоязычная инструкция для Ollama.
+- Снижена temperature до 0.1.
+- Добавлен ml/language_guard.py.
+- Усилены prompts в ai_report.py, ai_generation.py, ai_image.py.
+- PaddleOCR остаётся основным OCR.
+- EasyOCR остаётся fallback для OCR.
+- Ollama fallback независим от OCR fallback.

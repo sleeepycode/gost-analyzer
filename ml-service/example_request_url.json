@@ -1,0 +1,15 @@
+{
+  "project_id": "123",
+  "document_text": "Введение\n\nПрактическая часть\n\nЗаключение",
+  "topic": "Лабораторная работа",
+  "image_urls": [
+    "http://127.0.0.1:8000/storage/projects/123/images/graph.png"
+  ],
+  "images": [
+    {
+      "image_id": "img_001",
+      "path": "/storage/projects/123/images/scheme.png",
+      "source": "back2_parsed_from_docx"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+
+# Пример использования логов
+
+from ml.logger import logger
+
+logger.info("ML server started")
+
+logger.info(f"Received project_id={project_id}")
+
+logger.info(f"Received {len(image_paths)} images")
+
+logger.info(f"Downloading image from URL: {url}")
+
+logger.warning("OCR returned empty text")
+
+logger.warning("Fallback classifier enabled")
+
+logger.error(f"OCR failed: {e}")
+
+logger.error(f"Image download failed: {url}")
+
+logger.info("Classification completed")
+
+logger.info(f"Detected type: {image_type}")
+
+logger.info("Returning JSON response")
+
+logger.info("Pipeline finished successfully")

@@ -1,0 +1,29 @@
+# Frontend Designer Lab — список зависимостей (npm)
+# Установка: cd frontend && npm install
+# Точные версии — в package-lock.json
+#
+# Системные требования:
+#   Node.js 18+ или 20+ LTS
+#   npm 9+
+
+# --- dependencies (production) ---
+react>=18.3.1
+react-dom>=18.3.1
+react-router-dom>=6.28.0
+docx-preview>=0.3.7
+
+# --- devDependencies (сборка и разработка) ---
+vite>=5.4.11
+@vitejs/plugin-react>=4.3.3
+typescript>=5.6.3
+tailwindcss>=3.4.15
+postcss>=8.4.49
+autoprefixer>=10.4.20
+@types/react>=18.3.12
+@types/react-dom>=18.3.1
+
+# --- команды ---
+# npm install          # скачать все пакеты
+# npm run dev          # dev-сервер :3000 (опционально)
+# npm run build        # сборка в dist/ для backend :8002
+# npm run preview      # просмотр production-сборки
