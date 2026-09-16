@@ -14,7 +14,23 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-`.env` — скопируйте из `.env.example`, укажите **свой пароль** PostgreSQL.
+### Docker (DO-01)
+
+Одиночный образ Backend. Критерий: `docker build` → `docker run` → `GET /health` = 200.
+
+```bash
+docker build -t gost-analyzer-backend .
+docker run --rm -p 8002:8002 gost-analyzer-backend
+```
+
+БД и интеграции в этот шаг не входят:
+- контейнер использует текущий дефолт приложения (в `.env.example` / `config.py` сейчас SQLite);
+- отдельный сервис `database` в Compose — **DO-05** (согласовать с Backend);
+- Doc/ML при одиночном `docker run` могут быть недоступны — для `/health` это нормально.
+
+Переменные при необходимости — через `-e`. Файл `.env` в образ не копируется.
+
+`.env` — скопируйте из `.env.example`. Для локального запуска в примере указан SQLite; блок про PostgreSQL ниже — наследие старой настройки (`psycopg` в `requirements.txt` сейчас нет).
 
 ```env
 database_url=postgresql+psycopg://postgres:ВАШ_ПАРОЛЬ@localhost:5432/lab_formatter

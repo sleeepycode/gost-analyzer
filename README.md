@@ -449,14 +449,21 @@ cp .env.example .env
 docs/
 ```
 
-Планируемая структура:
+Актуальные документы:
+
+```text
+docs/
+├── workflow.md
+└── service-routes.md   # порты, health, URL между сервисами (Docker/локально)
+```
+
+Планируется дополнительно:
 
 ```text
 docs/
 ├── architecture.md
 ├── api-contract.md
 ├── development.md
-├── workflow.md
 ├── testing.md
 └── gost-rules.md
 ```
