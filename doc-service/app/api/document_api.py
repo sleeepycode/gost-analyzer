@@ -9,14 +9,14 @@ from app.services.document_assembler import assemble_full_document, convert_docx
 from app.services.docx_core import ensure_project_dir
 from app.services.ml_client import analyze_document_with_ml
 from app.services.form_service import save_form_data, get_form_data, get_topic_from_form
+from app.services.docx_parser import parse_docx
+from app.services.legacy_adapter import to_legacy
+from app.services.docx_core import ensure_project_dir, save_json
 
-from app.services.docx_core import (
-    extract_docx,
-    ensure_project_dir,
-    save_json,
-)
 
 router = APIRouter(prefix='/documents', tags=['documents'])
+
+
 
 
 @router.post('/extract')
@@ -34,20 +34,21 @@ async def extract(file: UploadFile = File(...), project_id: str | None = Form(No
     media_dir = project_dir / 'media'
     media_dir.mkdir(parents=True, exist_ok=True)
 
-    # Извлекаем содержимое DOCX
-    result = extract_docx(str(in_path), str(media_dir), project_id=project_id)
-    
-    # Сохраняем результат
-    save_json(project_dir / 'extract_response.json', result)
-    
-    # Возвращаем project_id и результат
+    # Новый конвейер: parse -> legacy
+    parsed = parse_docx(in_path, media_dir, project_id=project_id)
+    legacy = to_legacy(parsed)
+
+    # Сохраняем ОБА формата: новый (для внутреннего использования)
+    # и старый (для совместимости).
+    save_json(project_dir / 'parsed.json', parsed.to_dict())
+    save_json(project_dir / 'extract_response.json', legacy)
+
     return JSONResponse(content={
         'project_id': project_id,
-        'paragraphs': result.get('paragraphs', []),
-        'tables': result.get('tables', []),
-        'images': result.get('images', [])
+        'paragraphs': legacy.get('paragraphs', []),
+        'tables': legacy.get('tables', []),
+        'images': legacy.get('images', []),
     })
-
 
 @router.get('/health')
 async def health():
