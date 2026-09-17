@@ -5,7 +5,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.shared import Pt
 
 from app.core.config import settings
-from app.services.extractor import iter_block_items
+from app.services.docx_parser import iter_block_items
 
 
 TITLE_KEYWORDS = [

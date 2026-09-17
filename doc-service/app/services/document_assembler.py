@@ -16,6 +16,7 @@ from app.services.docx_core import ensure_project_dir, save_json
 from app.services.gost_applier import apply_gost_formatting
 from app.services.title_page_generator import generate_title_page
 from app.services.styles import *
+from app.schemas.document import ParsedDocument, Block, BlockType
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -26,50 +27,6 @@ if not logger.handlers:
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
-
-
-SECTION_ORDER = ['introduction', 'theory', 'practice', 'conclusion']
-SECTION_TITLES = {
-    'introduction': 'Введение',
-    'theory': 'Теоретическая часть',
-    'practice': 'Практическая часть',
-    'conclusion': 'Заключение',
-}
-
-SECTION_PATTERNS = [
-    ('introduction', 'введение'),
-    ('introduction', 'цель работы'),
-    ('introduction', 'цель лабораторной работы'),
-    ('theory', 'теоретическая часть'),
-    ('theory', 'теоретические сведения'),
-    ('theory', 'теория'),
-    ('practice', 'практическая часть'),
-    ('practice', 'ход работы'),
-    ('practice', 'выполнение работы'),
-    ('practice', 'экспериментальная часть'),
-    ('practice', 'задание'),
-    ('conclusion', 'заключение'),
-    ('conclusion', 'выводы'),
-    ('conclusion', 'вывод'),
-]
-
-
-def _detect_section(text: str) -> str | None:
-    text_lower = str(text or '').lower().strip()
-    for section_key, keyword in SECTION_PATTERNS:
-        if keyword in text_lower:
-            return section_key
-    return None
-
-
-def _is_section_header(text: str) -> bool:
-    text = str(text or '').strip()
-    if not text:
-        return False
-    if len(text) > 120:
-        return False
-    return _detect_section(text) is not None
-
 
 def _paragraph_text(para: Any) -> str:
     if isinstance(para, dict):
@@ -249,89 +206,8 @@ def extract_sections_from_paragraphs(paragraphs: list) -> Dict[str, str]:
     return sections
 
 
-def _build_section_ranges(paragraphs: list) -> dict[str, list[int]]:
-    """
-    Возвращает индексы исходных paragraph'ов, которые относятся к каждой секции.
-    Это нужно, чтобы картинки из DOCX вставлялись не пачкой в конец, а рядом с исходным контекстом.
-    """
-    ranges: dict[str, list[int]] = {key: [] for key in SECTION_ORDER}
-    current_section = None
-
-    for pos, para in enumerate(paragraphs):
-        text = _paragraph_text(para)
-        paragraph_idx = _paragraph_index(para, pos)
-
-        if not text.strip():
-            continue
-
-        if _is_section_header(text):
-            detected = _detect_section(text)
-            if detected:
-                current_section = detected
-                ranges.setdefault(current_section, [])
-            continue
-
-        if current_section:
-            ranges.setdefault(current_section, []).append(paragraph_idx)
-
-    logger.info(
-        "Section paragraph ranges: "
-        + ", ".join(f"{key}={values[:1]}..{values[-1:] if values else []}" for key, values in ranges.items())
-    )
-    return ranges
 
 
-def _detect_image_section(image: dict, section_ranges: dict[str, list[int]]) -> str:
-    if _is_user_image(image):
-        return 'practice'
-
-    pos = _image_paragraph_position(image)
-    if pos is None:
-        return 'practice'
-
-    for section_key in SECTION_ORDER:
-        indices = section_ranges.get(section_key) or []
-        if not indices:
-            continue
-        if min(indices) <= pos <= max(indices):
-            return section_key
-
-    # Если картинка стоит после последнего практического абзаца, но до вывода — это всё равно практика.
-    practice_indices = section_ranges.get('practice') or []
-    conclusion_indices = section_ranges.get('conclusion') or []
-    if practice_indices and conclusion_indices:
-        if max(practice_indices) <= pos <= min(conclusion_indices):
-            return 'practice'
-
-    return 'practice'
-
-
-def _image_slot_inside_section(image: dict, section_key: str, section_ranges: dict[str, list[int]], content_paragraphs_count: int) -> int:
-    """
-    Переводит insert_before_paragraph из исходного документа в приблизительное место внутри
-    нового текста секции, который мог быть заменён ML.
-    """
-    if content_paragraphs_count <= 0:
-        return 0
-
-    if _is_user_image(image):
-        return content_paragraphs_count
-
-    pos = _image_paragraph_position(image)
-    indices = section_ranges.get(section_key) or []
-
-    if pos is None or not indices:
-        return content_paragraphs_count
-
-    start = min(indices)
-    end = max(indices)
-
-    if end <= start:
-        return min(content_paragraphs_count, 1)
-
-    ratio = (pos - start) / max(1, end - start + 1)
-    slot = round(ratio * content_paragraphs_count)
-    return max(0, min(content_paragraphs_count, slot))
 
 
 def _prepare_images_by_section(structure: Dict[str, Any], section_ranges: dict[str, list[int]]) -> dict[str, list[dict]]:
@@ -591,118 +467,8 @@ def _insert_images_for_slot(
     return image_counter
 
 
-def build_document_from_structured_data(structure: Dict[str, Any], output_path: str) -> str:
-    logger.info("=" * 50)
-    logger.info("BUILDING DOCUMENT FROM STRUCTURE")
-    logger.debug(f"Structure keys: {list(structure.keys())}")
-
-    doc = Document()
-    doc = setup_document_styles(doc)
-
-    paragraphs = structure.get('paragraphs', []) or []
-    section_ranges = _build_section_ranges(paragraphs)
-    images_by_section = _prepare_images_by_section(structure, section_ranges)
-
-    added_count = 0
-    image_counter = 1
-    temp_files: list[str] = []
-
-    try:
-        for section_key in SECTION_ORDER:
-            section = structure.get(section_key)
-            if section and isinstance(section, dict):
-                title = section.get('title', SECTION_TITLES.get(section_key, section_key))
-                content = section.get('content', '')
-                content_paragraphs = [p.strip() for p in str(content).split('\n') if p.strip()]
-
-                if content_paragraphs:
-                    add_heading_center(doc, title)
-
-                    section_images = images_by_section.get(section_key, []) or []
-                    slots: dict[int, list[dict]] = {}
-                    for image in section_images:
-                        slot = _image_slot_inside_section(
-                            image=image,
-                            section_key=section_key,
-                            section_ranges=section_ranges,
-                            content_paragraphs_count=len(content_paragraphs),
-                        )
-                        slots.setdefault(slot, []).append(image)
-
-                    # Вставляем картинки до/между абзацами секции по рассчитанным slot.
-                    for para_index in range(len(content_paragraphs) + 1):
-                        if para_index in slots:
-                            image_counter = _insert_images_for_slot(
-                                doc=doc,
-                                images=slots[para_index],
-                                image_counter=image_counter,
-                                temp_files=temp_files,
-                                section_key=section_key,
-                                slot=para_index,
-                            )
-
-                        if para_index < len(content_paragraphs):
-                            add_gost_paragraph(doc, content_paragraphs[para_index])
-
-                    added_count += 1
-                    logger.info(
-                        f"Added section '{section_key}' with {len(content)} chars and {len(section_images)} images"
-                    )
-                else:
-                    logger.warning(f"Section '{section_key}' has empty content, skipping")
-            else:
-                logger.debug(f"Section '{section_key}' not found or not a dict")
-
-        logger.info(f"Total sections added: {added_count}")
-
-        # Если какие-то картинки не попали в известные секции, добавляем их перед библиографией.
-        already_known = set()
-        for images in images_by_section.values():
-            already_known.update(id(img) for img in images)
-
-        leftover_images = [
-            img for img in structure.get('images', []) or []
-            if isinstance(img, dict) and id(img) not in already_known
-        ]
-        if leftover_images:
-            add_heading_center(doc, 'Иллюстративные материалы')
-            image_counter = _insert_images_for_slot(
-                doc=doc,
-                images=leftover_images,
-                image_counter=image_counter,
-                temp_files=temp_files,
-                section_key='materials',
-                slot=0,
-            )
-
-        bibliography = structure.get('bibliography', [])
-        if bibliography:
-            add_heading_center(doc, 'Список литературы')
-            for i, ref in enumerate(bibliography):
-                add_bibliography_item(doc, i + 1, ref)
-                logger.debug(f"  Bibliography item {i + 1}: {str(ref)[:50]}...")
-            logger.info(f"Added bibliography with {len(bibliography)} items")
-        else:
-            logger.debug('No bibliography found in structure')
-
-        doc.save(output_path)
-        logger.info(f"Document saved successfully to: {output_path}")
-        logger.debug(f"Output file size: {Path(output_path).stat().st_size} bytes")
-
-    except Exception as e:
-        logger.error(f"Failed to save/build document: {str(e)}")
-        raise
-
-    finally:
-        for filename in temp_files:
-            try:
-                Path(filename).unlink(missing_ok=True)
-                logger.debug(f"Removed temp image file: {filename}")
-            except Exception as exc:
-                logger.warning(f"Could not remove temp image file: {filename}; error={exc}")
-
-    logger.info("=" * 50)
-    return output_path
+def _build_document_from_parsed(parsed: ParsedDocument, output_path: str) -> None:
+    render_document(parsed, output_path, title_page_marker_skip=False)
 
 
 def assemble_full_document(
@@ -715,7 +481,7 @@ def assemble_full_document(
     logger.info(f"Starting full document assembly for project: {project_id}")
 
     project_dir = ensure_project_dir(project_id)
-    extracted_path = project_dir / 'extract_response.json'
+    extracted_path = project_dir / 'parsed.json'
     if not extracted_path.exists():
         error_msg = f'Extracted data not found for project {project_id} at {extracted_path}'
         logger.error(error_msg)
