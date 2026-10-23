@@ -418,7 +418,7 @@ ollama        :11434
 
 Проверки: `GET http://127.0.0.1:8002/health`, `http://127.0.0.1:8000/documents/health`, `http://127.0.0.1:8001/health`, UI `http://127.0.0.1:3000/`.
 
-Первый билд ML-образа долгий (CPU torch). Healthchecks сервисов — задача DO-06.
+Первый билд ML-образа долгий (CPU torch). У сервисов настроены healthchecks (`docker compose ps`).
 
 Локальный запуск отдельных сервисов без Docker — в README каталогов `backend/`, `doc-service/`, `ml-service/`, `frontend/`.
 

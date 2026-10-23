@@ -1,6 +1,5 @@
-# ГОСТ Analyzer — локальный стек (DO-05)
+# ГОСТ Analyzer — локальный стек (DO-05 + DO-06 healthchecks)
 # Сервисы: frontend, backend, doc-service, ml-service, db, ollama
-# Healthchecks — DO-06
 
 services:
   db:
@@ -14,6 +13,12 @@ services:
       - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gost} -d ${POSTGRES_DB:-gost_analyzer}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     restart: unless-stopped
 
   ollama:
@@ -23,6 +28,12 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
     restart: unless-stopped
 
   backend:
@@ -48,9 +59,24 @@ services:
     volumes:
       - backend_storage:/app/storage
     depends_on:
-      - db
-      - doc-service
-      - ml-service
+      db:
+        condition: service_healthy
+      doc-service:
+        condition: service_healthy
+      ml-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=5)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
 
   doc-service:
@@ -64,7 +90,20 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - ml-service
+      ml-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/documents/health', timeout=5)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
     restart: unless-stopped
 
   ml-service:
@@ -81,7 +120,20 @@ services:
     ports:
       - "8001:8001"
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=5)",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 90s
     restart: unless-stopped
 
   frontend:
@@ -91,7 +143,14 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
 volumes:

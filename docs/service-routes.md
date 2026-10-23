@@ -124,7 +124,10 @@ DO-02  Doc Service Dockerfile
 DO-03  ML Service Dockerfile
 DO-04  Frontend Dockerfile
 DO-05  Compose (+ database — с Backend)
-DO-06  Healthchecks
+DO-06  Healthchecks                         ← в docker-compose.yml
 DO-07  Volumes
 DO-08  CI
 ```
+
+Healthchecks (DO-06): `db` → `pg_isready`; `ollama` → `ollama list`; Backend/Doc/ML → HTTP health; Frontend → `GET /`.
+
