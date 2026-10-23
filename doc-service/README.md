@@ -25,6 +25,16 @@ Document Service (port 8001)
 
 ## Установка и запуск
 
+### Docker (DO-02)
+
+```bash
+docker build -t gost-analyzer-doc-service .
+docker run --rm -p 8000:8000 gost-analyzer-doc-service
+```
+
+Проверка: `GET http://127.0.0.1:8000/documents/health` → HTTP 200.  
+В образе установлен LibreOffice (`soffice`) для DOCX → PDF.
+
 ### 1. Установить зависимости
 
 ```bash
