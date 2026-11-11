@@ -78,6 +78,61 @@ export type ExtractResponse = {
   images: string[];
 };
 
+export type DraftBlockType = 'paragraph' | 'heading' | 'image' | 'table' | 'page_break';
+
+export type DraftBlock = {
+  id: string;
+  type: DraftBlockType;
+  text?: string | null;
+  image_id?: string | null;
+  caption?: string | null;
+  rows?: string[][] | null;
+};
+
+export type DraftSection = {
+  id: string;
+  title: string;
+  blocks: DraftBlock[];
+};
+
+export type DraftTitlePage = {
+  faculty: string;
+  department: string;
+  student_group: string;
+  lab_title: string;
+  lab_number: string;
+  student_name: string;
+  reviewer_name: string;
+  discipline: string;
+};
+
+export type DocumentDraft = {
+  schema_version: number;
+  project_id: string;
+  source_type: 'blank' | 'docx';
+  title_page: DraftTitlePage;
+  sections: DraftSection[];
+  bibliography: string[];
+  images: Array<Record<string, unknown>>;
+  settings: Record<string, unknown>;
+  version: number;
+};
+
+export type BlankProjectResponse = {
+  project_id: string;
+  user_id: string;
+  source_type: 'blank';
+  status: string;
+  title: string;
+};
+
+export type ProjectDraftResponse = {
+  project_id: string;
+  source_type: 'blank' | 'docx';
+  version: number;
+  draft: DocumentDraft;
+};
+
 export type ProjectUploadResponse = {
   project_id: string;
   status: string;
@@ -95,7 +150,8 @@ export type ProjectStatusResponse = {
   project_id: string;
   user_id?: string | null;
   status: string;
-  source_filename: string;
+  source_type: 'blank' | 'docx';
+  source_filename?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -132,6 +188,36 @@ export type ApiHealthResponse = {
 export async function getApiHealth(signal?: AbortSignal): Promise<ApiHealthResponse> {
   const res = await apiFetch(`${getApiBase()}/health`, { signal });
   return parseJsonOrThrow(res) as Promise<ApiHealthResponse>;
+}
+
+export async function createBlankProject(userId: string, title: string): Promise<BlankProjectResponse> {
+  const res = await apiFetch(`${getApiBase()}/projects`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, title: title.trim() }),
+  });
+  return parseJsonOrThrow(res) as Promise<BlankProjectResponse>;
+}
+
+export async function getProjectDraft(projectId: string, userId: string): Promise<ProjectDraftResponse> {
+  const q = new URLSearchParams({ user_id: userId });
+  const res = await apiFetch(`${getApiBase()}/projects/${projectId}/draft?${q}`);
+  return parseJsonOrThrow(res) as Promise<ProjectDraftResponse>;
+}
+
+export async function updateProjectDraft(
+  projectId: string,
+  userId: string,
+  version: number,
+  draft: DocumentDraft,
+): Promise<ProjectDraftResponse> {
+  const q = new URLSearchParams({ user_id: userId });
+  const res = await apiFetch(`${getApiBase()}/projects/${projectId}/draft?${q}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ version, draft }),
+  });
+  return parseJsonOrThrow(res) as Promise<ProjectDraftResponse>;
 }
 
 async function parseJsonOrThrow(res: Response): Promise<unknown> {
@@ -179,7 +265,7 @@ export async function uploadProjectFile(
   projectId: string,
   file: File,
   userId: string,
-): Promise<{ file_type: string }> {
+): Promise<{ project_id?: string; status?: string; file_path: string; file_type: string }> {
   const fd = new FormData();
   fd.append('file', file);
   fd.append('user_id', userId);
@@ -187,7 +273,12 @@ export async function uploadProjectFile(
     method: 'POST',
     body: fd,
   });
-  return parseJsonOrThrow(res) as Promise<{ file_type: string }>;
+  return parseJsonOrThrow(res) as Promise<{
+    project_id?: string;
+    status?: string;
+    file_path: string;
+    file_type: string;
+  }>;
 }
 
 export type ProcessPayload = {

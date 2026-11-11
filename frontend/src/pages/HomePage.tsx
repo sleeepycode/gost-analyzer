@@ -47,13 +47,22 @@ export function HomePage() {
       )}
 
       {user && (
-        <Link
-          to="/project/new"
-          className="btn-primary inline-flex"
-          onClick={() => clearWizardSession(user.userId)}
-        >
-          Создать новый проект
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          <Link
+            to="/project/new"
+            className="btn-primary inline-flex"
+            onClick={() => clearWizardSession(user.userId)}
+          >
+            Загрузить DOCX
+          </Link>
+          <Link
+            to="/project/new/blank"
+            className="btn-secondary inline-flex"
+            onClick={() => clearWizardSession(user.userId)}
+          >
+            Создать отчёт с нуля
+          </Link>
+        </div>
       )}
     </div>
   );
