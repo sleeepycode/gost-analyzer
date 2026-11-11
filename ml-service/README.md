@@ -17,6 +17,18 @@
 
 ---
 
+## Docker (DO-03)
+
+```bash
+docker build -t gost-analyzer-ml-service .
+docker run --rm -p 8001:8001 gost-analyzer-ml-service
+```
+
+Проверка: `GET http://127.0.0.1:8001/health` → HTTP 200.
+
+Образ включает OCR-зависимости; PyTorch ставится в **CPU**-варианте (без CUDA).  
+По умолчанию `IMAGE_ANALYSIS_MODE=fast`. Ollama в одиночном `docker run` может быть недоступен — для `/health` это нормально; URL задаётся через `OLLAMA_BASE_URL`.
+
 ## Установка
 
 Рекомендуется Python 3.12.
