@@ -1,0 +1,100 @@
+# ГОСТ Analyzer — локальный стек (DO-05)
+# Сервисы: frontend, backend, doc-service, ml-service, db, ollama
+# Healthchecks — DO-06
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: gost-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gost}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gost}
+      POSTGRES_DB: ${POSTGRES_DB:-gost_analyzer}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: gost-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    container_name: gost-backend
+    environment:
+      APP_NAME: Lab Formatter MVP
+      DEBUG: "false"
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-gost}:${POSTGRES_PASSWORD:-gost}@db:5432/${POSTGRES_DB:-gost_analyzer}
+      BACKEND_PUBLIC_URL: http://backend:8002
+      DOC_SERVICE_BASE_URL: http://doc-service:8000
+      ML_SERVICE_BASE_URL: http://ml-service:8001
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-change-me-in-dev}
+      STORAGE_DIR: storage
+      INPUT_DIR: storage/inputs
+      OUTPUT_DIR: storage/outputs
+      REPORT_DIR: storage/reports
+      PROJECTS_DIR: storage/projects
+    ports:
+      - "8002:8002"
+    volumes:
+      - backend_storage:/app/storage
+    depends_on:
+      - db
+      - doc-service
+      - ml-service
+    restart: unless-stopped
+
+  doc-service:
+    build:
+      context: ./doc-service
+    container_name: gost-doc-service
+    environment:
+      PORT: "8000"
+      SERVICE_URL: http://backend:8002
+      ML_SERVICE_URL: http://ml-service:8001
+    ports:
+      - "8000:8000"
+    depends_on:
+      - ml-service
+    restart: unless-stopped
+
+  ml-service:
+    build:
+      context: ./ml-service
+    container_name: gost-ml-service
+    environment:
+      IMAGE_ANALYSIS_MODE: fast
+      MAX_OCR_IMAGES: "0"
+      ENABLE_IMAGE_AI: "false"
+      AI_PROVIDER: ollama
+      OLLAMA_BASE_URL: http://ollama:11434
+      BACKEND_BASE_URL: http://backend:8002
+    ports:
+      - "8001:8001"
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: gost-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  db_data:
+  ollama_data:
+  backend_storage:

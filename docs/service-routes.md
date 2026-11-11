@@ -59,7 +59,7 @@ ML        → Ollama:      http://127.0.0.1:11434
 Backend   → БД:          sqlite:///./app.db   (как в .env.example)
 ```
 
-### Compose (план DO-05, hostname’ы)
+### Compose (DO-05, hostname’ы)
 
 ```text
 frontend  → backend:8002
@@ -67,10 +67,11 @@ backend   → doc-service:8000
 backend   → ml-service:8001
 doc-service → ml-service:8001
 ml-service  → ollama:11434
-backend   → db:5432          # после согласования с Backend
+backend   → db:5432          # postgresql+psycopg://…@db:5432/…
 ```
 
-Имена контейнеров для Compose: `frontend`, `backend`, `doc-service`, `ml-service`, `db`, `ollama`.
+Имена сервисов Compose: `frontend`, `backend`, `doc-service`, `ml-service`, `db`, `ollama`.  
+Файл: корневой `docker-compose.yml`.
 
 ---
 

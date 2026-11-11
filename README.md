@@ -398,26 +398,29 @@ Pull Request не должен объединяться, если:
 
 ## Запуск проекта
 
-Полный запуск через Docker Compose находится в разработке.
-
-После завершения инфраструктурной части проект должен запускаться командой:
+### Docker Compose (DO-05)
 
 ```bash
+copy .env.example .env
 docker compose up --build
 ```
 
-Планируемый запуск должен поднимать:
+Поднимает:
 
 ```text
-Frontend
-Backend
-Doc Service
-ML Service
-Database
-Ollama
+frontend      :3000
+backend       :8002
+doc-service   :8000
+ml-service    :8001
+db (Postgres) :5432
+ollama        :11434
 ```
 
-До завершения контейнеризации инструкции по локальному запуску отдельных сервисов находятся в соответствующих каталогах.
+Проверки: `GET http://127.0.0.1:8002/health`, `http://127.0.0.1:8000/documents/health`, `http://127.0.0.1:8001/health`, UI `http://127.0.0.1:3000/`.
+
+Первый билд ML-образа долгий (CPU torch). Healthchecks сервисов — задача DO-06.
+
+Локальный запуск отдельных сервисов без Docker — в README каталогов `backend/`, `doc-service/`, `ml-service/`, `frontend/`.
 
 ---
 
