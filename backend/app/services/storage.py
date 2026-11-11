@@ -87,6 +87,27 @@ def read_project_metadata(project_id: str) -> dict:
         return json.load(f)
 
 
+def get_project_draft_path(project_id: str) -> Path:
+    return ensure_project_dirs(project_id)["root"] / "document.json"
+
+
+def write_project_draft(project_id: str, draft: dict) -> str:
+    draft_path = get_project_draft_path(project_id)
+    temporary_path = draft_path.with_suffix(".json.tmp")
+    with temporary_path.open("w", encoding="utf-8") as f:
+        json.dump(draft, f, ensure_ascii=False, indent=2)
+    temporary_path.replace(draft_path)
+    return str(draft_path)
+
+
+def read_project_draft(project_id: str) -> dict | None:
+    draft_path = get_project_draft_path(project_id)
+    if not draft_path.exists():
+        return None
+    with draft_path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
 def copy_project_file_to_task_input(task_id: str, source_path: str | Path) -> str:
     ensure_dirs()
     src = Path(source_path)

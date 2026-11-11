@@ -9,11 +9,17 @@ from app.core.db import Base
 
 
 class ProjectStatus(str, enum.Enum):
+    DRAFT = "draft"          # пустой проект с черновиком
     UPLOADED = "uploaded"      # файл загружен
     PROCESSING = "processing"  # оркестрация: валидация, doc-service (не ML)
     ANALYZING = "analyzing"    # документ/данные у ML
     READY = "ready"
     ERROR = "error"
+
+
+class ProjectSourceType(str, enum.Enum):
+    BLANK = "blank"
+    DOCX = "docx"
 
 
 class Project(Base):
@@ -26,8 +32,13 @@ class Project(Base):
         default=ProjectStatus.UPLOADED,
         nullable=False,
     )
-    source_filename: Mapped[str] = mapped_column(String, nullable=False)
-    source_path: Mapped[str] = mapped_column(String, nullable=False)
+    source_type: Mapped[ProjectSourceType] = mapped_column(
+        String(16),
+        default=ProjectSourceType.DOCX.value,
+        nullable=False,
+    )
+    source_filename: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_path: Mapped[str | None] = mapped_column(String, nullable=True)
     metadata_path: Mapped[str] = mapped_column(String, nullable=False)
     payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

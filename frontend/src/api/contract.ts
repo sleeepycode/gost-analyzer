@@ -4,8 +4,10 @@
  */
 export const API_ROUTES = {
   health: '/health',
+  projectsCreate: '/projects',
   projectsUpload: '/projects/upload',
   project: (id: string) => `/projects/${id}`,
+  projectDraft: (id: string) => `/projects/${id}/draft`,
   projectFiles: (id: string) => `/projects/${id}/files`,
   projectProcess: (id: string) => `/projects/${id}/process`,
   projectSuggestions: (id: string) => `/projects/${id}/suggestions`,

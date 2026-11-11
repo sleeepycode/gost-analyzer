@@ -47,11 +47,18 @@ def mock_external_services(monkeypatch, tmp_path):
         dest.write_bytes(_minimal_docx_bytes())
         return dest
 
+    def fake_assemble_from_draft(project_id: str, draft: dict, dest_path: str | Path) -> Path:
+        dest = Path(dest_path)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(_minimal_docx_bytes())
+        return dest
+
     monkeypatch.setattr(doc_service_client, 'extract_document', fake_extract)
     monkeypatch.setattr(doc_service_client, 'apply_ml_changes', fake_apply)
     monkeypatch.setattr(doc_service_client, 'get_project_info', fake_info)
     monkeypatch.setattr(doc_service_client, 'download_pdf', fake_download_pdf)
     monkeypatch.setattr(doc_service_client, 'download_docx', fake_download_docx)
+    monkeypatch.setattr(doc_service_client, 'assemble_from_draft', fake_assemble_from_draft)
     monkeypatch.setattr(orchestrator, 'extract_via_doc_service', fake_extract)
 
     def fake_pipeline(docx_path, project_id, title_page, topic, output_pdf_path, output_docx_path):
@@ -61,7 +68,13 @@ def mock_external_services(monkeypatch, tmp_path):
         fake_download_docx(project_id, output_docx_path)
         return result
 
+    def fake_blank_pipeline(draft, project_id, output_pdf_path, output_docx_path):
+        fake_assemble_from_draft(project_id, draft, output_docx_path)
+        fake_download_pdf(project_id, output_pdf_path)
+        return {'status': 'completed', 'project_id': project_id}
+
     monkeypatch.setattr(orchestrator, 'run_doc_service_pipeline', fake_pipeline)
+    monkeypatch.setattr(orchestrator, 'run_blank_project_pipeline', fake_blank_pipeline)
     monkeypatch.setattr(doc_service_client, 'ping', lambda: {'ok': True})
 
     def fake_analyze_image_file(image_path, topic, document_text=''):

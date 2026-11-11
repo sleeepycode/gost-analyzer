@@ -55,6 +55,130 @@ def _client(tmp_path):
     return TestClient(app)
 
 
+def test_create_blank_project_and_read_initial_draft(tmp_path):
+    with _client(tmp_path) as client:
+        response = client.post(
+            "/projects",
+            json={"user_id": "user-1", "title": "Новая лабораторная работа"},
+        )
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["source_type"] == "blank"
+        assert body["status"] == "draft"
+        project_id = body["project_id"]
+
+        project_dir = Path(settings.projects_dir) / project_id
+        assert (project_dir / "document.json").exists()
+
+        draft_response = client.get(f"/projects/{project_id}/draft?user_id=user-1")
+        assert draft_response.status_code == 200
+        draft_body = draft_response.json()
+        assert draft_body["version"] == 1
+        assert draft_body["draft"]["project_id"] == project_id
+        assert draft_body["draft"]["title_page"]["lab_title"] == "Новая лабораторная работа"
+        assert [section["id"] for section in draft_body["draft"]["sections"]] == [
+            "introduction",
+            "theory",
+            "practice",
+            "conclusion",
+        ]
+
+
+def test_update_project_draft_increments_version(tmp_path):
+    with _client(tmp_path) as client:
+        create_response = client.post("/projects", json={"user_id": "user-1", "title": "Черновик"})
+        project_id = create_response.json()["project_id"]
+        draft = client.get(f"/projects/{project_id}/draft?user_id=user-1").json()["draft"]
+        draft["sections"][0]["blocks"] = [
+            {"id": "intro-1", "type": "paragraph", "text": "Текст введения."}
+        ]
+
+        update_response = client.put(
+            f"/projects/{project_id}/draft?user_id=user-1",
+            json={"version": 1, "draft": draft},
+        )
+
+        assert update_response.status_code == 200
+        body = update_response.json()
+        assert body["version"] == 2
+        assert body["draft"]["version"] == 2
+        assert body["draft"]["sections"][0]["blocks"][0]["text"] == "Текст введения."
+
+
+def test_update_project_draft_rejects_stale_version_and_other_user(tmp_path):
+    with _client(tmp_path) as client:
+        create_response = client.post("/projects", json={"user_id": "user-1"})
+        project_id = create_response.json()["project_id"]
+        draft = client.get(f"/projects/{project_id}/draft?user_id=user-1").json()["draft"]
+
+        forbidden_response = client.put(
+            f"/projects/{project_id}/draft?user_id=user-2",
+            json={"version": 1, "draft": draft},
+        )
+        assert forbidden_response.status_code == 403
+
+        first_update = client.put(
+            f"/projects/{project_id}/draft?user_id=user-1",
+            json={"version": 1, "draft": draft},
+        )
+        assert first_update.status_code == 200
+
+        stale_update = client.put(
+            f"/projects/{project_id}/draft?user_id=user-1",
+            json={"version": 1, "draft": draft},
+        )
+        assert stale_update.status_code == 409
+
+
+def test_process_blank_project_builds_outputs_from_draft(tmp_path):
+    with _client(tmp_path) as client:
+        create_response = client.post(
+            "/projects",
+            json={"user_id": "user-1", "title": "Отчёт без исходного DOCX"},
+        )
+        assert create_response.status_code == 201
+        project_id = create_response.json()["project_id"]
+
+        draft = client.get(f"/projects/{project_id}/draft?user_id=user-1").json()["draft"]
+        draft["sections"][0]["blocks"] = [
+            {"id": "intro-1", "type": "paragraph", "text": "Текст отчёта."}
+        ]
+        update_response = client.put(
+            f"/projects/{project_id}/draft?user_id=user-1",
+            json={"version": 1, "draft": draft},
+        )
+        assert update_response.status_code == 200
+
+        form = {
+            "user_id": "user-1",
+            "faculty": "ФКТ",
+            "department": "Кафедра ИС",
+            "student_group": "БПИ-01",
+            "lab_title": "Отчёт без исходного DOCX",
+            "lab_number": "1",
+            "student_name": "Иванов И.И.",
+            "reviewer_name": "Петров П.П.",
+            "discipline": "Программирование",
+        }
+        process_response = client.post(f"/projects/{project_id}/process", data=form)
+
+        assert process_response.status_code == 200
+        body = process_response.json()
+        assert body["status"] == "ready"
+        assert body["report"]["pipeline"]["steps"] == [
+            "load_draft",
+            "doc_service.assemble_from_draft",
+            "doc_service.download_pdf",
+            "doc_service.write_docx",
+        ]
+
+        task_id = body["task_id"]
+        project_dir = Path(settings.projects_dir) / project_id
+        assert (project_dir / "output" / f"{task_id}.pdf").exists()
+        assert (project_dir / "output" / f"{task_id}.docx").exists()
+
+
 def test_upload_project_file_creates_project_structure(tmp_path):
     with _client(tmp_path) as client:
         files = {

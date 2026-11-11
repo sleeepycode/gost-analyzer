@@ -72,6 +72,24 @@ def run_doc_service_pipeline(
     return apply_result
 
 
+def run_blank_project_pipeline(
+    draft: dict[str, Any],
+    project_id: str,
+    output_pdf_path: str | Path,
+    output_docx_path: str | Path,
+) -> dict[str, Any]:
+    """
+    1) POST /documents/assemble-from-draft
+    2) GET /documents/download-pdf
+
+    Для blank-проекта DOCX не извлекается повторно: редактор уже хранит
+    структурированный черновик, из которого doc-service собирает результат.
+    """
+    doc_service_client.assemble_from_draft(project_id, draft, output_docx_path)
+    doc_service_client.download_pdf(project_id, output_pdf_path)
+    return {'status': 'completed', 'project_id': project_id}
+
+
 def title_page_from_form(payload: dict | None) -> dict:
     payload = payload or {}
     return {

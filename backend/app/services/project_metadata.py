@@ -23,11 +23,13 @@ def empty(
     status: str = "uploaded",
     topic: str | None = None,
     source_filename: str | None = None,
+    source_type: str = "docx",
 ) -> dict[str, Any]:
     return {
         "project_id": project_id,
         "status": status,
         "topic": topic,
+        "source_type": source_type,
         "input_file": None,
         "images": [],
         "output_file": None,
@@ -39,6 +41,8 @@ def empty(
         "image_ml_results": {},
         "analysis": None,
         "last_task_report_path": None,
+        "draft_path": None,
+        "draft_version": None,
     }
 
 
@@ -59,6 +63,7 @@ def normalize(raw: dict[str, Any] | None, project: Project | None = None) -> dic
             status=snap.get("status") or (project.status.value if project else "uploaded"),
             topic=inner.get("topic"),
             source_filename=inner.get("source_filename"),
+            source_type=inner.get("source_type") or (project.source_type if project else "docx"),
         )
         meta["input_file"] = snap.get("source_path") or inner.get("input_file")
         meta["errors"] = list(inner.get("processing_errors") or inner.get("errors") or [])
@@ -110,6 +115,7 @@ def save(project: Project, meta: dict[str, Any]) -> str:
 def sync_status(meta: dict[str, Any], project: Project) -> None:
     meta["project_id"] = project.id
     meta["status"] = project.status.value
+    meta["source_type"] = str(project.source_type)
     if project.source_filename and not meta.get("source_filename"):
         meta["source_filename"] = project.source_filename
 

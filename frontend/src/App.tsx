@@ -3,6 +3,7 @@ import { AppShell } from '@/layout/AppShell';
 import { HomePage } from '@/pages/HomePage';
 import { LoginPage } from '@/pages/LoginPage';
 import { NewProjectPage } from '@/pages/NewProjectPage';
+import { BlankReportPage } from '@/pages/BlankReportPage';
 import { ProjectPreviewPage } from '@/pages/ProjectPreviewPage';
 
 export default function App() {
@@ -12,6 +13,7 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/project/new" element={<NewProjectPage />} />
+        <Route path="/project/new/blank" element={<BlankReportPage />} />
         <Route path="/project/:projectId" element={<ProjectPreviewPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

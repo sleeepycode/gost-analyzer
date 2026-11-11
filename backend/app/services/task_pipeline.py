@@ -4,7 +4,7 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.models.project import Project, ProjectStatus
+from app.models.project import Project, ProjectSourceType, ProjectStatus
 from app.models.task import DocumentTask, TaskStatus
 from app.services import orchestrator
 from app.services import ml_client
@@ -17,6 +17,7 @@ from app.services.storage import (
 )
 from app.core.errors import raise_api_error
 from app.services.validator import validate_source_document
+from app.services.document_draft import load_draft
 
 
 def _build_uploaded_images_for_doc_service(project: Project | None, meta: dict | None) -> list[dict[str, Any]]:
@@ -49,7 +50,11 @@ def run_document_task_pipeline(
     project: Project | None,
     input_path: str,
 ) -> dict[str, Any]:
-    if Path(input_path).stat().st_size == 0:
+    is_blank_project = bool(
+        project and str(project.source_type) == ProjectSourceType.BLANK.value
+    )
+
+    if not is_blank_project and Path(input_path).stat().st_size == 0:
         task.status = TaskStatus.FAILED
         task.errors = ['Входной файл пустой.']
         db.commit()
@@ -69,17 +74,33 @@ def run_document_task_pipeline(
         project_meta = pm.load(project)
         metadata_topic = pm.topic_value(project_meta)
 
-    try:
-        validation = validate_source_document(input_path)
-    except Exception:
-        task.status = TaskStatus.FAILED
-        task.errors = ['Не удалось прочитать DOCX. Проверьте, что файл не поврежден.']
-        db.commit()
-        _update_project_status(db, project, ProjectStatus.ERROR)
-        raise_api_error(
-            'corrupted_docx',
-            'Не удалось прочитать DOCX. Проверьте, что файл не поврежден.',
-        )
+    draft = None
+    if is_blank_project:
+        draft = load_draft(project.id)
+        if draft is None:
+            task.status = TaskStatus.FAILED
+            task.errors = ['Черновик проекта не найден.']
+            db.commit()
+            _update_project_status(db, project, ProjectStatus.ERROR)
+            raise_api_error('draft_not_found', 'Черновик проекта не найден.')
+        validation = {
+            'is_valid': True,
+            'errors': [],
+            'warnings': [],
+            'metrics': {'source_type': ProjectSourceType.BLANK.value},
+        }
+    else:
+        try:
+            validation = validate_source_document(input_path)
+        except Exception:
+            task.status = TaskStatus.FAILED
+            task.errors = ['Не удалось прочитать DOCX. Проверьте, что файл не поврежден.']
+            db.commit()
+            _update_project_status(db, project, ProjectStatus.ERROR)
+            raise_api_error(
+                'corrupted_docx',
+                'Не удалось прочитать DOCX. Проверьте, что файл не поврежден.',
+            )
 
     if not validation['is_valid']:
         report = {
@@ -113,15 +134,28 @@ def run_document_task_pipeline(
 
         _update_project_status(db, project, ProjectStatus.ANALYZING)
         try:
-            process_result = orchestrator.run_doc_service_pipeline(
-                Path(input_path),
-                doc_service_project_id,
-                title_page,
-                topic,
-                output_pdf,
-                output_docx,
-                uploaded_images=_build_uploaded_images_for_doc_service(project, project_meta),
-            )
+            if is_blank_project:
+                draft_payload = draft.model_copy(
+                    update={
+                        'title_page': draft.title_page.model_copy(update=title_page),
+                    }
+                ).model_dump(mode='json')
+                process_result = orchestrator.run_blank_project_pipeline(
+                    draft_payload,
+                    doc_service_project_id,
+                    output_pdf,
+                    output_docx,
+                )
+            else:
+                process_result = orchestrator.run_doc_service_pipeline(
+                    Path(input_path),
+                    doc_service_project_id,
+                    title_page,
+                    topic,
+                    output_pdf,
+                    output_docx,
+                    uploaded_images=_build_uploaded_images_for_doc_service(project, project_meta),
+                )
         finally:
             _update_project_status(db, project, ProjectStatus.PROCESSING)
 
@@ -137,11 +171,10 @@ def run_document_task_pipeline(
                 'doc_service_project_id': doc_service_project_id,
                 'topic': topic,
                 'steps': [
-                    'validate',
-                    'doc_service.extract',
-                    'doc_service.apply_ml_changes',
+                    'validate' if not is_blank_project else 'load_draft',
+                    'doc_service.extract' if not is_blank_project else 'doc_service.assemble_from_draft',
                     'doc_service.download_pdf',
-                    'doc_service.download_docx',
+                    'doc_service.download_docx' if not is_blank_project else 'doc_service.write_docx',
                 ],
             },
             'outputs': {'pdf': output_pdf, 'docx': output_docx},

@@ -91,6 +91,24 @@ def apply_ml_changes(
     return {'status': 'completed', 'project_id': project_id}
 
 
+def assemble_from_draft(
+    project_id: str,
+    draft: dict[str, Any],
+    dest_path: str | Path,
+) -> Path:
+    """POST /documents/assemble-from-draft — собрать DOCX из редакторского черновика."""
+    url = f'{_base_url()}/documents/assemble-from-draft'
+    body = {'project_id': project_id, 'draft': draft}
+    with httpx.Client(timeout=float(getattr(settings, 'doc_service_timeout', 900))) as client:
+        response = client.post(url, json=body)
+    response.raise_for_status()
+
+    dest = Path(dest_path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(response.content)
+    return dest
+
+
 def get_project_info(project_id: str) -> dict[str, Any]:
     """GET /documents/info/{project_id}"""
     url = f'{_base_url()}/documents/info/{project_id}'

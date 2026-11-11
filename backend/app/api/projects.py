@@ -9,10 +9,14 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.config import settings
 from app.core.errors import require_docx_upload, require_image_upload, raise_api_error
-from app.models.project import Project, ProjectStatus
+from app.models.project import Project, ProjectSourceType, ProjectStatus
 from app.models.task import DocumentTask, TaskStatus
 from app.schemas.project import (
     ProjectUploadResponse,
+    ProjectCreateRequest,
+    ProjectCreateResponse,
+    ProjectDraftResponse,
+    ProjectDraftUpdateRequest,
     ProjectStatusResponse,
     ProjectDeleteResponse,
     ProjectAnalysisResponse,
@@ -29,9 +33,12 @@ from app.services.image_suggestions_engine import build_image_suggestions_from_m
 from app.services.ml_image_analysis import register_uploaded_image_in_metadata
 from app.services.project_docx import resolve_primary_project_docx
 from app.services.storage import (
+    ensure_project_dirs,
+    get_project_draft_path,
     save_project_source_file,
     copy_project_file_to_task_input,
 )
+from app.services.document_draft import build_default_draft, load_draft, save_draft
 from app.services.task_pipeline import run_document_task_pipeline
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -42,6 +49,47 @@ def _ensure_project_owner(project: Project, user_id: str, action: str) -> None:
         raise HTTPException(status_code=403, detail=f"У проекта не задан владелец. {action} запрещено.")
     if project.user_id != user_id:
         raise HTTPException(status_code=403, detail=f"Нельзя {action} для проекта другого пользователя.")
+
+
+@router.post("", response_model=ProjectCreateResponse, status_code=201)
+def create_blank_project(
+    body: ProjectCreateRequest,
+    db: Session = Depends(get_db),
+):
+    project = Project(
+        user_id=body.user_id,
+        status=ProjectStatus.DRAFT,
+        source_type=ProjectSourceType.BLANK.value,
+        source_filename=None,
+        source_path=None,
+        metadata_path="",
+        payload=None,
+    )
+    db.add(project)
+    db.flush()
+    ensure_project_dirs(project.id)
+
+    draft = build_default_draft(project.id, body.title)
+    draft_path = save_draft(draft)
+    meta = pm.empty(
+        project.id,
+        status=ProjectStatus.DRAFT.value,
+        source_type=ProjectSourceType.BLANK.value,
+    )
+    meta["title"] = body.title.strip()
+    meta["draft_path"] = draft_path
+    meta["draft_version"] = draft.version
+    pm.save(project, meta)
+    db.commit()
+    db.refresh(project)
+
+    return ProjectCreateResponse(
+        project_id=project.id,
+        user_id=body.user_id,
+        source_type=ProjectSourceType.BLANK.value,
+        status=project.status.value,
+        title=body.title.strip(),
+    )
 
 
 @router.post("/upload", response_model=ProjectUploadResponse)
@@ -58,6 +106,7 @@ def upload_project_file(
     project = Project(
         user_id=user_id,
         status=ProjectStatus.UPLOADED,
+        source_type=ProjectSourceType.DOCX.value,
         source_filename=Path(file.filename).name,
         source_path="",
         metadata_path="",
@@ -79,6 +128,7 @@ def upload_project_file(
         status=ProjectStatus.UPLOADED.value,
         topic=(topic or "").strip() or None,
         source_filename=project.source_filename,
+        source_type=ProjectSourceType.DOCX.value,
     )
     pm.set_input_file(meta, source_path)
     metadata_path = pm.save(project, meta)
@@ -105,9 +155,81 @@ def get_project_status(project_id: str, db: Session = Depends(get_db)):
         project_id=project.id,
         user_id=project.user_id,
         status=project.status.value,
+        source_type=str(project.source_type),
         source_filename=project.source_filename,
         created_at=project.created_at,
         updated_at=project.updated_at,
+    )
+
+
+@router.get("/{project_id}/draft", response_model=ProjectDraftResponse)
+def get_project_draft(
+    project_id: str,
+    user_id: str = Query(..., description="Идентификатор пользователя"),
+    db: Session = Depends(get_db),
+):
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Проект не найден.")
+    _ensure_project_owner(project, user_id, "читать черновик")
+
+    draft = load_draft(project_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Черновик проекта не найден.")
+
+    return ProjectDraftResponse(
+        project_id=project.id,
+        source_type=str(project.source_type),
+        version=draft.version,
+        draft=draft,
+    )
+
+
+@router.put("/{project_id}/draft", response_model=ProjectDraftResponse)
+def update_project_draft(
+    project_id: str,
+    body: ProjectDraftUpdateRequest,
+    user_id: str = Query(..., description="Идентификатор пользователя"),
+    db: Session = Depends(get_db),
+):
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Проект не найден.")
+    _ensure_project_owner(project, user_id, "изменять черновик")
+
+    current_draft = load_draft(project_id)
+    if current_draft is None:
+        raise HTTPException(status_code=404, detail="Черновик проекта не найден.")
+    if body.version != current_draft.version:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "draft_version_conflict",
+                "message": "Черновик уже изменён. Сначала загрузите актуальную версию.",
+                "details": {"current_version": current_draft.version},
+            },
+        )
+    if body.draft.project_id != project.id:
+        raise HTTPException(status_code=422, detail="project_id черновика не совпадает с проектом.")
+
+    next_draft = body.draft.model_copy(
+        update={
+            "source_type": str(project.source_type),
+            "version": current_draft.version + 1,
+        }
+    )
+    draft_path = save_draft(next_draft)
+    meta = pm.load(project)
+    meta["draft_path"] = draft_path
+    meta["draft_version"] = next_draft.version
+    pm.save(project, meta)
+    db.commit()
+
+    return ProjectDraftResponse(
+        project_id=project.id,
+        source_type=str(project.source_type),
+        version=next_draft.version,
+        draft=next_draft,
     )
 
 
@@ -176,8 +298,9 @@ def process_project_document(
         raise HTTPException(status_code=404, detail="Проект не найден.")
     _ensure_project_owner(project, user_id, "запускать обработку")
 
-    docx_path = resolve_primary_project_docx(project)
-    if not docx_path:
+    is_blank_project = str(project.source_type) == ProjectSourceType.BLANK.value
+    docx_path = None if is_blank_project else resolve_primary_project_docx(project)
+    if not is_blank_project and not docx_path:
         project.status = ProjectStatus.ERROR
         db.commit()
         meta = pm.load(project)
@@ -199,8 +322,8 @@ def process_project_document(
     task = DocumentTask(
         user_id=user_id,
         project_id=project_id,
-        original_filename=docx_path.name,
-        input_path="",
+        original_filename="document.json" if is_blank_project else docx_path.name,
+        input_path=str(get_project_draft_path(project_id)) if is_blank_project else "",
         payload=payload,
         status=TaskStatus.CREATED,
         errors=[],
@@ -213,7 +336,11 @@ def process_project_document(
     project.status = ProjectStatus.PROCESSING
     db.commit()
 
-    input_path = copy_project_file_to_task_input(task.id, docx_path)
+    input_path = (
+        str(get_project_draft_path(project_id))
+        if is_blank_project
+        else copy_project_file_to_task_input(task.id, docx_path)
+    )
 
     if topic and topic.strip():
         meta = pm.load(project)
