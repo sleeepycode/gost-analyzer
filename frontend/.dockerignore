@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.git/
+.gitignore
+.DS_Store
+Thumbs.db
+
+.env
+.env.*
+!.env.example
+
+*.md
+docs/
+*.cmd
+requirements-frontend.txt
+REQUIREMENTS.md

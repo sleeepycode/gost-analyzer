@@ -66,6 +66,18 @@ npm run dev
 
 Открыть http://127.0.0.1:3000 (порт задан в `vite.config.ts`).
 
+### Docker (DO-04)
+
+Multi-stage: `npm run build` → nginx. Порт хоста `3000` → контейнер `80`.
+
+```bash
+docker build -t gost-analyzer-frontend .
+docker run --rm -p 3000:80 gost-analyzer-frontend
+```
+
+Проверка: `GET http://127.0.0.1:3000/` → HTTP 200.  
+API (`/health`, `/auth`, `/projects`, `/tasks`, `/storage`) проксируется на `backend:8002` (доступно в Compose).
+
 
 
 ## Расширение UI
