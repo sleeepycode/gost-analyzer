@@ -34,6 +34,7 @@ from app.services.ml_image_analysis import register_uploaded_image_in_metadata
 from app.services.project_docx import resolve_primary_project_docx
 from app.services.storage import (
     ensure_project_dirs,
+    get_project_draft_path,
     save_project_source_file,
     copy_project_file_to_task_input,
 )
@@ -297,8 +298,9 @@ def process_project_document(
         raise HTTPException(status_code=404, detail="Проект не найден.")
     _ensure_project_owner(project, user_id, "запускать обработку")
 
-    docx_path = resolve_primary_project_docx(project)
-    if not docx_path:
+    is_blank_project = str(project.source_type) == ProjectSourceType.BLANK.value
+    docx_path = None if is_blank_project else resolve_primary_project_docx(project)
+    if not is_blank_project and not docx_path:
         project.status = ProjectStatus.ERROR
         db.commit()
         meta = pm.load(project)
@@ -320,8 +322,8 @@ def process_project_document(
     task = DocumentTask(
         user_id=user_id,
         project_id=project_id,
-        original_filename=docx_path.name,
-        input_path="",
+        original_filename="document.json" if is_blank_project else docx_path.name,
+        input_path=str(get_project_draft_path(project_id)) if is_blank_project else "",
         payload=payload,
         status=TaskStatus.CREATED,
         errors=[],
@@ -334,7 +336,11 @@ def process_project_document(
     project.status = ProjectStatus.PROCESSING
     db.commit()
 
-    input_path = copy_project_file_to_task_input(task.id, docx_path)
+    input_path = (
+        str(get_project_draft_path(project_id))
+        if is_blank_project
+        else copy_project_file_to_task_input(task.id, docx_path)
+    )
 
     if topic and topic.strip():
         meta = pm.load(project)

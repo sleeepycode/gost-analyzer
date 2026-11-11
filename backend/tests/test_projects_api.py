@@ -131,6 +131,54 @@ def test_update_project_draft_rejects_stale_version_and_other_user(tmp_path):
         assert stale_update.status_code == 409
 
 
+def test_process_blank_project_builds_outputs_from_draft(tmp_path):
+    with _client(tmp_path) as client:
+        create_response = client.post(
+            "/projects",
+            json={"user_id": "user-1", "title": "Отчёт без исходного DOCX"},
+        )
+        assert create_response.status_code == 201
+        project_id = create_response.json()["project_id"]
+
+        draft = client.get(f"/projects/{project_id}/draft?user_id=user-1").json()["draft"]
+        draft["sections"][0]["blocks"] = [
+            {"id": "intro-1", "type": "paragraph", "text": "Текст отчёта."}
+        ]
+        update_response = client.put(
+            f"/projects/{project_id}/draft?user_id=user-1",
+            json={"version": 1, "draft": draft},
+        )
+        assert update_response.status_code == 200
+
+        form = {
+            "user_id": "user-1",
+            "faculty": "ФКТ",
+            "department": "Кафедра ИС",
+            "student_group": "БПИ-01",
+            "lab_title": "Отчёт без исходного DOCX",
+            "lab_number": "1",
+            "student_name": "Иванов И.И.",
+            "reviewer_name": "Петров П.П.",
+            "discipline": "Программирование",
+        }
+        process_response = client.post(f"/projects/{project_id}/process", data=form)
+
+        assert process_response.status_code == 200
+        body = process_response.json()
+        assert body["status"] == "ready"
+        assert body["report"]["pipeline"]["steps"] == [
+            "load_draft",
+            "doc_service.assemble_from_draft",
+            "doc_service.download_pdf",
+            "doc_service.write_docx",
+        ]
+
+        task_id = body["task_id"]
+        project_dir = Path(settings.projects_dir) / project_id
+        assert (project_dir / "output" / f"{task_id}.pdf").exists()
+        assert (project_dir / "output" / f"{task_id}.docx").exists()
+
+
 def test_upload_project_file_creates_project_structure(tmp_path):
     with _client(tmp_path) as client:
         files = {
