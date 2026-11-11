@@ -15,6 +15,7 @@ from docx2pdf import convert as docx_to_pdf
 from app.services.docx_core import ensure_project_dir, save_json
 from app.services.gost_applier import apply_gost_formatting
 from app.services.title_page_generator import generate_title_page
+from app.services.draft_assembler import build_legacy_document
 from app.services.styles import *
 from app.schemas.document import ParsedDocument, Block, BlockType
 
@@ -521,7 +522,7 @@ def assemble_full_document(
     logger.debug(f"Final file: {final_docx}")
 
     logger.info('Building temporary document...')
-    build_document_from_structured_data(merged_structure, str(temp_docx))
+    build_legacy_document(merged_structure, str(temp_docx))
     if not temp_docx.exists():
         return {'status': 'failed', 'error': f'Temp file not created: {temp_docx}'}
     logger.info(f"Temp file created: {temp_docx.stat().st_size} bytes")

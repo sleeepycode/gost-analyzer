@@ -12,6 +12,8 @@ from app.services.form_service import save_form_data, get_form_data, get_topic_f
 from app.services.docx_parser import parse_docx
 from app.services.legacy_adapter import to_legacy
 from app.services.docx_core import ensure_project_dir, save_json
+from app.schemas.draft import DraftBuildRequest
+from app.services.draft_assembler import assemble_draft_document
 
 
 router = APIRouter(prefix='/documents', tags=['documents'])
@@ -53,6 +55,22 @@ async def extract(file: UploadFile = File(...), project_id: str | None = Form(No
 @router.get('/health')
 async def health():
     return {'status': 'ok'}
+
+
+@router.post('/assemble-from-draft')
+async def assemble_from_draft(body: DraftBuildRequest):
+    try:
+        result = assemble_draft_document(body.project_id, body.draft)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f'Assembly failed: {exc}') from exc
+
+    return FileResponse(
+        path=result['output_path'],
+        filename=f"{body.project_id}_result.docx",
+        media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    )
 
 
 @router.post('/apply_ml_changes')
